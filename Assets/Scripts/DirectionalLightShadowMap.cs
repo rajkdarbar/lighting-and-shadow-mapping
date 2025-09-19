@@ -4,64 +4,99 @@ using UnityEngine;
 public class DirectionalLightShadowMap : MonoBehaviour
 {
     public int shadowResolution = 1024;
-    public float orthoSize = 10f;
-    public float nearPlane = 0.1f;
-    public float farPlane = 50f;
 
     private Camera shadowCam;
-    private RenderTexture shadowMap;
-
+    public RenderTexture shadowMap;
     private Light dirLight;
+    private Camera mainCam;
 
     void Start()
     {
         dirLight = GetComponent<Light>();
+        mainCam = Camera.main;
 
-        // Create shadow map render texture
-        shadowMap = new RenderTexture(shadowResolution, shadowResolution, 16, RenderTextureFormat.Shadowmap);
+        // Use ARGB32 for debugging (switch to RFloat later)
+        shadowMap = new RenderTexture(shadowResolution, shadowResolution, 16, RenderTextureFormat.RFloat);
         shadowMap.wrapMode = TextureWrapMode.Clamp;
         shadowMap.filterMode = FilterMode.Bilinear;
 
-        // Create hidden camera
-        GameObject camObj = new GameObject("DirectionalShadowCam");
-        camObj.hideFlags = HideFlags.HideAndDontSave;
-        shadowCam = camObj.AddComponent<Camera>();
+        // Create shadow camera attached to directional light
+        GameObject camObj = new GameObject("DirShadowCam");
+        camObj.transform.SetParent(transform, false);
 
+        shadowCam = camObj.AddComponent<Camera>();
         shadowCam.enabled = false;
         shadowCam.orthographic = true;
-        shadowCam.orthographicSize = orthoSize;
-        shadowCam.nearClipPlane = nearPlane;
-        shadowCam.farClipPlane = farPlane;
-        shadowCam.clearFlags = CameraClearFlags.Depth;
+        shadowCam.clearFlags = CameraClearFlags.SolidColor;
         shadowCam.backgroundColor = Color.white;
         shadowCam.targetTexture = shadowMap;
 
-        // Assign to shader
+        // Push to global
         Shader.SetGlobalTexture("_DirectionalShadowMap", shadowMap);
+
+        // Assign to quad if found
+        GameObject quad = GameObject.Find("Quad");
+        if (quad != null)
+        {
+            var mat = quad.GetComponent<Renderer>().material;
+            if (mat != null && mat.HasProperty("_ShadowMap"))
+            {
+                mat.SetTexture("_ShadowMap", shadowMap);
+            }
+        }
     }
 
     void LateUpdate()
     {
-        // Align shadow camera with light
-        shadowCam.transform.position = transform.position;
+        if (mainCam == null || shadowCam == null) return;
+
+        // 1. Get frustum corners from main camera
+        Vector3[] frustumCorners = new Vector3[8];
+        GetFrustumCornersWorld(mainCam, frustumCorners);
+
+        // 2. Transform corners into light space
+        Matrix4x4 lightView = Matrix4x4.TRS(Vector3.zero, transform.rotation, Vector3.one).inverse;
+        Vector3 min = Vector3.one * float.MaxValue;
+        Vector3 max = Vector3.one * float.MinValue;
+
+        foreach (var c in frustumCorners)
+        {
+            Vector3 lc = lightView.MultiplyPoint(c);
+            min = Vector3.Min(min, lc);
+            max = Vector3.Max(max, lc);
+        }
+
+        // 3. Fit orthographic camera to cover the frustum
+        shadowCam.transform.position = transform.position;  // align with directional light
         shadowCam.transform.rotation = transform.rotation;
 
-        // Render depth
-        shadowCam.RenderWithShader(Shader.Find("Custom/ShadowCaster"), "RenderType");
+        shadowCam.orthographicSize = (max.y - min.y) * 0.5f;
+        shadowCam.aspect = (max.x - min.x) / (max.y - min.y);
+        shadowCam.nearClipPlane = -max.z;
+        shadowCam.farClipPlane = -min.z;
 
-        // Build light-space matrix (bias to [0,1])
-        Matrix4x4 view = shadowCam.worldToCameraMatrix;
-        Matrix4x4 proj = GL.GetGPUProjectionMatrix(shadowCam.projectionMatrix, false);
+        // 4. Render shadow map
+        Shader scShader = Shader.Find("Custom/ShadowCaster");
+        if (scShader != null)
+        {
+            shadowCam.RenderWithShader(scShader, "RenderType");
+        }
+    }
 
-        Matrix4x4 vp = proj * view;
+    void GetFrustumCornersWorld(Camera cam, Vector3[] outCorners)
+    {
+        Matrix4x4 camLocalToWorld = cam.transform.localToWorldMatrix;
 
-        // Bias matrix for texture coords (from -1..1 to 0..1)
-        Matrix4x4 bias = Matrix4x4.identity;
-        bias.m00 = bias.m11 = bias.m22 = 0.5f;
-        bias.m03 = bias.m13 = bias.m23 = 0.5f;
+        Vector3[] nearCorners = new Vector3[4];
+        Vector3[] farCorners = new Vector3[4];
 
-        Matrix4x4 lightSpaceMatrix = bias * vp;
+        cam.CalculateFrustumCorners(new Rect(0, 0, 1, 1), cam.nearClipPlane, Camera.MonoOrStereoscopicEye.Mono, nearCorners);
+        cam.CalculateFrustumCorners(new Rect(0, 0, 1, 1), cam.farClipPlane, Camera.MonoOrStereoscopicEye.Mono, farCorners);
 
-        Shader.SetGlobalMatrix("_DirectionalLightSpaceMatrix", lightSpaceMatrix);
+        for (int i = 0; i < 4; i++)
+        {
+            outCorners[i] = camLocalToWorld.MultiplyPoint(nearCorners[i]);
+            outCorners[i + 4] = camLocalToWorld.MultiplyPoint(farCorners[i]);
+        }
     }
 }
