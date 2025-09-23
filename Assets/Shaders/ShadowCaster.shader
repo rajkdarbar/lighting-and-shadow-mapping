@@ -1,3 +1,4 @@
+
 Shader "Custom/ShadowCaster"
 {
     SubShader
@@ -5,7 +6,8 @@ Shader "Custom/ShadowCaster"
         Tags { "RenderType" = "Opaque" }
         Pass
         {
-            Cull Off
+            Cull Front // helps to reduce shadow acne
+            Offset 2, 2 // bias = m.tan(θ) + r
             ZWrite On
 
             CGPROGRAM
@@ -22,22 +24,23 @@ Shader "Custom/ShadowCaster"
                 float depth : TEXCOORD0;
             };
 
+            float4x4 _DirLightViewProjectionMatrix; // coming from DirectionalLightShadowMap.cs
+
             v2f vert(appdata v)
             {
                 v2f o;
-                o.pos = UnityObjectToClipPos(v.vertex);
+                o.pos = UnityObjectToClipPos(v.vertex); // render from shadowCam
 
-                // NDC depth [ - 1, 1] → [0, 1]
-                float ndcDepth = o.pos.z / o.pos.w;
-                o.depth = ndcDepth * 0.5 + 0.5;
-
+                float4 worldPos = mul(unity_ObjectToWorld, v.vertex);
+                float4 lpos = mul(_DirLightViewProjectionMatrix, worldPos);
+                o.depth = lpos.z / lpos.w; // NDC z mapped to [0..1] because we used 'true' in GetGPUProjectionMatrix
                 return o;
             }
 
-            float4 frag(v2f i) : SV_Target
+            fixed4 frag(v2f i) : SV_Target
             {
-                // write depth into RED channel
-                return float4(i.depth, i.depth, i.depth, 1); // grayscale
+                float d = saturate(i.depth); // write depth to R
+                return float4(d, d, d, 1);
             }
             ENDCG
         }

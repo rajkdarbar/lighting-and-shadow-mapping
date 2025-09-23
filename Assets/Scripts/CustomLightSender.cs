@@ -1,3 +1,4 @@
+
 using UnityEngine;
 using System.Collections.Generic;
 
@@ -16,9 +17,9 @@ public class CustomLightSender : MonoBehaviour
         {
             if (l.type == LightType.Directional)
             {
-                Vector3 dir = l.transform.forward; // I have negated this direction in shader
+                Vector3 dir = l.transform.forward;
                 Shader.SetGlobalColor("_DirectionalLightColor", l.color);
-                Shader.SetGlobalVector("_DirectionalLightDir", dir);
+                Shader.SetGlobalVector("_DirectionalLightDir", dir); // negate in shader
                 Shader.SetGlobalFloat("_DirectionalLightIntensity", l.intensity);
                 break; // only one
             }

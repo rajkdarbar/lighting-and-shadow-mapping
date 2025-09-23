@@ -1,9 +1,10 @@
+
 using UnityEngine;
 
 [RequireComponent(typeof(Light))]
 public class DirectionalLightShadowMap : MonoBehaviour
 {
-    public int shadowResolution = 1024;
+    public int shadowResolution = 4096;
 
     private Camera shadowCam;
     public RenderTexture shadowMap;
@@ -15,34 +16,33 @@ public class DirectionalLightShadowMap : MonoBehaviour
         dirLight = GetComponent<Light>();
         mainCam = Camera.main;
 
-        // Use ARGB32 for debugging (switch to RFloat later)
+        // Initialize the RenderTexture that will store the shadow map
         shadowMap = new RenderTexture(shadowResolution, shadowResolution, 16, RenderTextureFormat.RFloat);
-        shadowMap.wrapMode = TextureWrapMode.Clamp;
+        shadowMap.useMipMap = false;
         shadowMap.filterMode = FilterMode.Bilinear;
+        shadowMap.wrapMode = TextureWrapMode.Clamp; // control how textures behave when UV coordinates go outside the 0–1 range
+        shadowMap.Create();
 
         // Create shadow camera attached to directional light
         GameObject camObj = new GameObject("DirShadowCam");
         camObj.transform.SetParent(transform, false);
-
         shadowCam = camObj.AddComponent<Camera>();
         shadowCam.enabled = false;
         shadowCam.orthographic = true;
         shadowCam.clearFlags = CameraClearFlags.SolidColor;
-        shadowCam.backgroundColor = Color.white;
+        shadowCam.backgroundColor = SystemInfo.usesReversedZBuffer ? Color.black : Color.white; // ensures empty pixels = “far away”
         shadowCam.targetTexture = shadowMap;
 
         // Push to global
-        Shader.SetGlobalTexture("_DirectionalShadowMap", shadowMap);
+        Shader.SetGlobalFloat("_ShadowMapSize", shadowResolution);
+        Shader.SetGlobalTexture("_DirLightShadowMap", shadowMap);
 
-        // Assign to quad if found
-        GameObject quad = GameObject.Find("Quad");
+        var quad = GameObject.Find("Quad");
         if (quad != null)
         {
-            var mat = quad.GetComponent<Renderer>().material;
-            if (mat != null && mat.HasProperty("_ShadowMap"))
-            {
-                mat.SetTexture("_ShadowMap", shadowMap);
-            }
+            var m = new Material(Shader.Find("Custom/ShowShadowMap"));
+            m.SetTexture("_ShadowMap", shadowMap);
+            quad.GetComponent<Renderer>().material = m;
         }
     }
 
@@ -50,38 +50,66 @@ public class DirectionalLightShadowMap : MonoBehaviour
     {
         if (mainCam == null || shadowCam == null) return;
 
-        // 1. Get frustum corners from main camera
+        // Frustum corners of main camera in world space
         Vector3[] frustumCorners = new Vector3[8];
         GetFrustumCornersWorld(mainCam, frustumCorners);
 
-        // 2. Transform corners into light space
-        Matrix4x4 lightView = Matrix4x4.TRS(Vector3.zero, transform.rotation, Vector3.one).inverse;
+        // Compute light-space AABB for those corners (using current rotation)
+        Matrix4x4 lightView = shadowCam.worldToCameraMatrix;
         Vector3 min = Vector3.one * float.MaxValue;
         Vector3 max = Vector3.one * float.MinValue;
-
-        foreach (var c in frustumCorners)
+        for (int i = 0; i < 8; i++)
         {
-            Vector3 lc = lightView.MultiplyPoint(c);
-            min = Vector3.Min(min, lc);
-            max = Vector3.Max(max, lc);
+            Vector3 p = lightView.MultiplyPoint(frustumCorners[i]);
+            min = Vector3.Min(min, p);
+            max = Vector3.Max(max, p);
         }
 
-        // 3. Fit orthographic camera to cover the frustum
-        shadowCam.transform.position = transform.position;  // align with directional light
-        shadowCam.transform.rotation = transform.rotation;
+        // Center the shadow camera on that AABB
+        Vector3 centerLS = 0.5f * (min + max);
+        Vector3 centerWS = shadowCam.cameraToWorldMatrix.MultiplyPoint(centerLS);
+        shadowCam.transform.position = centerWS;
 
-        shadowCam.orthographicSize = (max.y - min.y) * 0.5f;
-        shadowCam.aspect = (max.x - min.x) / (max.y - min.y);
-        shadowCam.nearClipPlane = -max.z;
-        shadowCam.farClipPlane = -min.z;
+        // Recompute AABB with the camera now centered (so min/max are symmetric-ish)
+        lightView = shadowCam.worldToCameraMatrix;
+        min = Vector3.one * float.MaxValue;
+        max = Vector3.one * float.MinValue;
+        for (int i = 0; i < 8; i++)
+        {
+            Vector3 p = lightView.MultiplyPoint(frustumCorners[i]);
+            min = Vector3.Min(min, p);
+            max = Vector3.Max(max, p);
+        }
 
-        // 4. Render shadow map
+        // Configure orthographic projection from this AABB
+        float pad = 0.5f; // small padding to avoid clipping/shimmer
+        float width = (max.x - min.x) + 2f * pad;
+        float height = (max.y - min.y) + 2f * pad;
+        float depth = (max.z - min.z) + 2f * pad;
+
+        shadowCam.orthographicSize = height * 0.5f;
+        shadowCam.aspect = width / height;
+
+        // In camera space, Unity looks down -Z; near/far are positive distances
+        shadowCam.nearClipPlane = -(max.z) - pad; // max.z is the most negative (closest) in front
+        shadowCam.farClipPlane = -(min.z) + pad; // min.z is the farthest
+
+        // Upload the exact VP the shadowCam will render with
+        Matrix4x4 proj = GL.GetGPUProjectionMatrix(shadowCam.projectionMatrix, true);
+        Matrix4x4 lightVP = proj * lightView;
+
+        // Push to global
+        Shader.SetGlobalMatrix("_DirLightViewProjectionMatrix", lightVP);
+
+        // Render depth to the shadow map
         Shader scShader = Shader.Find("Custom/ShadowCaster");
         if (scShader != null)
         {
-            shadowCam.RenderWithShader(scShader, "RenderType");
+            //shadowCam.RenderWithShader(scShader, "RenderType");
+            shadowCam.RenderWithShader(scShader, null);
         }
     }
+
 
     void GetFrustumCornersWorld(Camera cam, Vector3[] outCorners)
     {
