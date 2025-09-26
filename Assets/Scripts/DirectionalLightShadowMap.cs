@@ -34,13 +34,13 @@ public class DirectionalLightShadowMap : MonoBehaviour
         shadowCam.targetTexture = shadowMap;
 
         // Push to global
-        Shader.SetGlobalFloat("_ShadowMapSize", shadowResolution);
+        Shader.SetGlobalFloat("_DirLightShadowMapSize", shadowResolution);
         Shader.SetGlobalTexture("_DirLightShadowMap", shadowMap);
 
-        var quad = GameObject.Find("Quad");
+        var quad = GameObject.Find("QuadDirLight");
         if (quad != null)
         {
-            var m = new Material(Shader.Find("Custom/ShowShadowMap"));
+            var m = new Material(Shader.Find("Custom/ShowDirLightShadowMap"));
             m.SetTexture("_ShadowMap", shadowMap);
             quad.GetComponent<Renderer>().material = m;
         }
@@ -102,11 +102,11 @@ public class DirectionalLightShadowMap : MonoBehaviour
         Shader.SetGlobalMatrix("_DirLightViewProjectionMatrix", lightVP);
 
         // Render depth to the shadow map
-        Shader scShader = Shader.Find("Custom/ShadowCaster");
+        Shader scShader = Shader.Find("Custom/ShadowCasterDirLight");
         if (scShader != null)
         {
-            //shadowCam.RenderWithShader(scShader, "RenderType");
-            shadowCam.RenderWithShader(scShader, null);
+            shadowCam.RenderWithShader(scShader, "RenderType");
+            //shadowCam.RenderWithShader(scShader, null);           
         }
     }
 

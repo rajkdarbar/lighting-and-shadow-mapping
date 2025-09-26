@@ -1,5 +1,5 @@
 
-Shader "Custom/ShadowCaster"
+Shader "Custom/ShadowCasterDirLight"
 {
     SubShader
     {
@@ -21,27 +21,21 @@ Shader "Custom/ShadowCaster"
 
             struct v2f {
                 float4 pos : SV_POSITION;
-                float depth : TEXCOORD0;
             };
-
-            float4x4 _DirLightViewProjectionMatrix; // coming from DirectionalLightShadowMap.cs
 
             v2f vert(appdata v)
             {
                 v2f o;
-                o.pos = UnityObjectToClipPos(v.vertex); // render from shadowCam
-
-                float4 worldPos = mul(unity_ObjectToWorld, v.vertex);
-                float4 lpos = mul(_DirLightViewProjectionMatrix, worldPos);
-                o.depth = lpos.z / lpos.w; // NDC z mapped to [0..1] because we used 'true' in GetGPUProjectionMatrix
+                o.pos = UnityObjectToClipPos(v.vertex); // transform into shadow camera clip space
                 return o;
             }
 
-            fixed4 frag(v2f i) : SV_Target
+            float frag(v2f i) : SV_Target
             {
-                float d = saturate(i.depth); // write depth to R
-                return float4(d, d, d, 1);
+                return i.pos.z / i.pos.w; // encode depth automatically from SV_POSITION.z / SV_POSITION
+
             }
+
             ENDCG
         }
     }

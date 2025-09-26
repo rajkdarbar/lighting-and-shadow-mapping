@@ -57,10 +57,9 @@ Shader "Custom/BlinnPhong"
             uniform float3 _DirectionalLightDir;
             uniform float _DirectionalLightIntensity;
 
-            // Shadow map (from DirectionalLightShadowMap.cs)
             sampler2D _DirLightShadowMap;
             float4x4 _DirLightViewProjectionMatrix;
-            float _DepthBias, _NormalBias, _ShadowMapSize;
+            float _DepthBias, _NormalBias, _DirLightShadowMapSize;
 
             // Point lights
             uniform int _NumPointLights;
@@ -77,6 +76,10 @@ Shader "Custom/BlinnPhong"
             uniform float _SpotLightIntensity[MAX_SPOT_LIGHTS];
             uniform float _SpotLightRange[MAX_SPOT_LIGHTS];
             uniform float _SpotLightAngle[MAX_SPOT_LIGHTS]; // cutoff cone
+
+            sampler2D _SpotLightShadowMaps[MAX_SPOT_LIGHTS];
+            float4x4 _SpotLightShadowMatrix[MAX_SPOT_LIGHTS];
+
 
 
             v2f vert (appdata v)
@@ -106,10 +109,12 @@ Shader "Custom/BlinnPhong"
                 // slope - scaled depth bias
                 float3 L = normalize(- _DirectionalLightDir);
                 float ndl = saturate(dot(normalize(normal), L));
-                float texel = 1.0 / _ShadowMapSize;
+                float texel = 1.0 / _DirLightShadowMapSize;
                 float bias = (_DepthBias + _NormalBias * (1.0 - ndl)) * texel;
 
                 /*
+
+                // This part is for hard shadow edges
 
                 float currDepth = lp.z;
                 float shadowMapDepth = tex2D(_DirLightShadowMap, uv).r;
@@ -124,7 +129,7 @@ Shader "Custom/BlinnPhong"
                 */
 
 
-                // -- -- -- -- PCF 3×3 -- -- -- --
+                // -- -- -- -- PCF 5×5 -- -- -- --
                 float currDepth = lp.z;
 
                 float shadow = 0.0;
@@ -193,6 +198,16 @@ Shader "Custom/BlinnPhong"
                 // Spot lights contribution
                 for (int s = 0; s < _NumSpotLights; s ++)
                 {
+
+                    /*
+
+                    float4 shadowCoord = mul(_SpotLightShadowMatrix[i], float4(worldPos, 1));
+                    shadowCoord /= shadowCoord.w;
+                    float shadowDepth = tex2Dproj(_SpotLightShadowMaps[i], shadowCoord).r;
+
+                    */
+
+
                     float3 L = _SpotLightPos[s] - i.worldPos;
                     float dist = length(L);
                     L = normalize(L);
