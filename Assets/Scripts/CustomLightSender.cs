@@ -4,80 +4,87 @@ using System.Collections.Generic;
 
 public class CustomLightSender : MonoBehaviour
 {
-    // limits must match shader constants
-    const int MAX_POINT_LIGHTS = 3;
-    const int MAX_SPOT_LIGHTS = 2;
-
     void Update()
     {
         Light[] lights = GetComponentsInChildren<Light>();
 
-        // Directional
+        // --- Directional light ---
+        bool dirFound = false;
         foreach (Light l in lights)
         {
-            if (l.type == LightType.Directional)
+            if (l.type == LightType.Directional && l.enabled)
             {
                 Vector3 dir = l.transform.forward;
-                Shader.SetGlobalColor("_DirectionalLightColor", l.color);
+                Shader.SetGlobalColor("_DirectionalLightColor", l.color * l.intensity);
                 Shader.SetGlobalVector("_DirectionalLightDir", dir); // negate in shader
-                Shader.SetGlobalFloat("_DirectionalLightIntensity", l.intensity);
+                dirFound = true;
                 break; // only one
             }
         }
 
-        // Arrays for point lights
-        Vector4[] pointPositions = new Vector4[MAX_POINT_LIGHTS];
-        Vector4[] pointColors = new Vector4[MAX_POINT_LIGHTS];
-        float[] pointIntensities = new float[MAX_POINT_LIGHTS];
-        float[] pointRanges = new float[MAX_POINT_LIGHTS];
+        if (!dirFound)
+        {
+            // reset if no directional light active
+            Shader.SetGlobalColor("_DirectionalLightColor", Color.black);
+            Shader.SetGlobalVector("_DirectionalLightDir", Vector3.zero);
+        }
 
-        int pIndex = 0;
+        // --- Point lights ---
+        List<Vector4> pointPositions = new List<Vector4>();
+        List<Vector4> pointColors = new List<Vector4>();
+        List<float> pointIntensities = new List<float>();
+        List<float> pointRanges = new List<float>();
 
-        // Arrays for spot lights
-        Vector4[] spotPositions = new Vector4[MAX_SPOT_LIGHTS];
-        Vector4[] spotDirections = new Vector4[MAX_SPOT_LIGHTS];
-        Vector4[] spotColors = new Vector4[MAX_SPOT_LIGHTS];
-        float[] spotIntensities = new float[MAX_SPOT_LIGHTS];
-        float[] spotRanges = new float[MAX_SPOT_LIGHTS];
-        float[] spotAngles = new float[MAX_SPOT_LIGHTS];
-
-        int sIndex = 0;
+        // --- Spot lights ---
+        List<Vector4> spotPositions = new List<Vector4>();
+        List<Vector4> spotDirections = new List<Vector4>();
+        List<Vector4> spotColors = new List<Vector4>();
+        List<float> spotIntensities = new List<float>();
+        List<float> spotRanges = new List<float>();
+        List<float> spotAngles = new List<float>();
 
         foreach (Light l in lights)
         {
-            if (l.type == LightType.Point && pIndex < MAX_POINT_LIGHTS)
+            if (!l.enabled) continue; // skip disabled lights
+
+            if (l.type == LightType.Point)
             {
-                pointPositions[pIndex] = l.transform.position;
-                pointColors[pIndex] = l.color;
-                pointIntensities[pIndex] = l.intensity;
-                pointRanges[pIndex] = l.range;
-                pIndex++;
+                pointPositions.Add(l.transform.position);
+                pointColors.Add(l.color);
+                pointIntensities.Add(l.intensity);
+                pointRanges.Add(l.range);
             }
-            else if (l.type == LightType.Spot && sIndex < MAX_SPOT_LIGHTS)
+            else if (l.type == LightType.Spot)
             {
-                spotPositions[sIndex] = l.transform.position;
-                spotDirections[sIndex] = l.transform.forward; // negate in shader
-                spotColors[sIndex] = l.color;
-                spotIntensities[sIndex] = l.intensity;
-                spotRanges[sIndex] = l.range;
-                spotAngles[sIndex] = Mathf.Cos(l.spotAngle * Mathf.Deg2Rad);
-                sIndex++;
+                spotPositions.Add(l.transform.position);
+                spotDirections.Add(l.transform.forward); // negate in shader
+                spotColors.Add(l.color);
+                spotIntensities.Add(l.intensity);
+                spotRanges.Add(l.range);
+                spotAngles.Add(Mathf.Cos(l.spotAngle * Mathf.Deg2Rad));
             }
         }
 
-        // Push to shader
-        Shader.SetGlobalInt("_NumPointLights", pIndex);
-        Shader.SetGlobalVectorArray("_PointLightPos", pointPositions);
-        Shader.SetGlobalVectorArray("_PointLightColor", pointColors);
-        Shader.SetGlobalFloatArray("_PointLightIntensity", pointIntensities);
-        Shader.SetGlobalFloatArray("_PointLightRange", pointRanges);
+        // Push point light data
+        Shader.SetGlobalInt("_NumPointLights", pointPositions.Count);
+        if (pointPositions.Count > 0)
+        {
+            Shader.SetGlobalVectorArray("_PointLightPos", pointPositions.ToArray());
+            Shader.SetGlobalVectorArray("_PointLightColor", pointColors.ToArray());
+            Shader.SetGlobalFloatArray("_PointLightIntensity", pointIntensities.ToArray());
+            Shader.SetGlobalFloatArray("_PointLightRange", pointRanges.ToArray());
+        }
 
-        Shader.SetGlobalInt("_NumSpotLights", sIndex);
-        Shader.SetGlobalVectorArray("_SpotLightPos", spotPositions);
-        Shader.SetGlobalVectorArray("_SpotLightDir", spotDirections);
-        Shader.SetGlobalVectorArray("_SpotLightColor", spotColors);
-        Shader.SetGlobalFloatArray("_SpotLightIntensity", spotIntensities);
-        Shader.SetGlobalFloatArray("_SpotLightRange", spotRanges);
-        Shader.SetGlobalFloatArray("_SpotLightAngle", spotAngles);
+        // Push spot light data
+        Shader.SetGlobalInt("_NumSpotLights", spotPositions.Count);
+        if (spotPositions.Count > 0)
+        {
+            Shader.SetGlobalVectorArray("_SpotLightPos", spotPositions.ToArray());
+            Shader.SetGlobalVectorArray("_SpotLightDir", spotDirections.ToArray());
+            Shader.SetGlobalVectorArray("_SpotLightColor", spotColors.ToArray());
+            Shader.SetGlobalFloatArray("_SpotLightIntensity", spotIntensities.ToArray());
+            Shader.SetGlobalFloatArray("_SpotLightRange", spotRanges.ToArray());
+            Shader.SetGlobalFloatArray("_SpotLightAngle", spotAngles.ToArray());
+        }
     }
 }

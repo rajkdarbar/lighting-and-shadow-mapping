@@ -10,7 +10,6 @@ public class GlobalAmbientController : MonoBehaviour
         var renderers = Object.FindObjectsByType<Renderer>(FindObjectsSortMode.None);
         foreach (var r in renderers)
         {
-            // handle all material slots
             var mats = r.sharedMaterials;
             for (int i = 0; i < mats.Length; i++)
             {

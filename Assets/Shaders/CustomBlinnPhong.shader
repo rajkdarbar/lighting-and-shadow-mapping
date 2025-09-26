@@ -48,10 +48,6 @@ Shader "Custom/BlinnPhong"
             fixed4 _AmbientColor;
             float _AmbientIntensity;
 
-            // Light counts
-            #define MAX_POINT_LIGHTS 3
-            #define MAX_SPOT_LIGHTS 2
-
             // Directional Light
             uniform float3 _DirectionalLightColor;
             uniform float3 _DirectionalLightDir;
@@ -63,22 +59,23 @@ Shader "Custom/BlinnPhong"
 
             // Point lights
             uniform int _NumPointLights;
-            uniform float3 _PointLightPos[MAX_POINT_LIGHTS];
-            uniform float3 _PointLightColor[MAX_POINT_LIGHTS];
-            uniform float _PointLightIntensity[MAX_POINT_LIGHTS];
-            uniform float _PointLightRange[MAX_POINT_LIGHTS]; // for attenuation
+            uniform float3 _PointLightPos[4];
+            uniform float3 _PointLightColor[4];
+            uniform float _PointLightIntensity[4];
+            uniform float _PointLightRange[4];
 
             // Spot lights
             uniform int _NumSpotLights;
-            uniform float3 _SpotLightPos[MAX_SPOT_LIGHTS];
-            uniform float3 _SpotLightDir[MAX_SPOT_LIGHTS];
-            uniform float3 _SpotLightColor[MAX_SPOT_LIGHTS];
-            uniform float _SpotLightIntensity[MAX_SPOT_LIGHTS];
-            uniform float _SpotLightRange[MAX_SPOT_LIGHTS];
-            uniform float _SpotLightAngle[MAX_SPOT_LIGHTS]; // cutoff cone
+            uniform float3 _SpotLightPos[4];
+            uniform float3 _SpotLightDir[4];
+            uniform float3 _SpotLightColor[4];
+            uniform float _SpotLightIntensity[4];
+            uniform float _SpotLightRange[4];
+            uniform float _SpotLightAngle[4];
+            uniform float _SpotLightShadowMapSize;
 
-            sampler2D _SpotLightShadowMaps[MAX_SPOT_LIGHTS];
-            float4x4 _SpotLightShadowMatrix[MAX_SPOT_LIGHTS];
+            float4x4 _SpotLightViewProjectionMatrix[4];
+            UNITY_DECLARE_TEX2DARRAY(_SpotLightShadowMaps);
 
 
 
@@ -92,6 +89,7 @@ Shader "Custom/BlinnPhong"
                 return o;
             }
 
+            // -- -- Directional light shadow test -- --
             float ShadowFactorDirectionalLight(float3 worldPos, float3 normal)
             {
                 float4 lp = mul(_DirLightViewProjectionMatrix, float4(worldPos, 1));
@@ -160,6 +158,61 @@ Shader "Custom/BlinnPhong"
             }
 
 
+            // -- -- Spotlight shadow test -- --
+            float ShadowFactorSpotLight(int index, float3 worldPos, float3 normal)
+            {
+                // Transform world position into the spotlight’s clip space
+                float4 lp = mul(_SpotLightViewProjectionMatrix[index], float4(worldPos, 1));
+                lp.xyz /= lp.w; // perspective divide → NDC [ - 1, 1]
+
+                // Convert to UV [0, 1]
+                float2 uv = lp.xy * 0.5 + 0.5;
+
+                #if UNITY_UV_STARTS_AT_TOP
+                uv.y = 1.0 - uv.y;
+                #endif
+
+                // Outside shadow map → fully lit
+                if (uv.x < 0 || uv.x > 1 || uv.y < 0 || uv.y > 1)
+                return 1.0;
+
+                // Bias (similar to directional)
+                float3 L = normalize(_SpotLightPos[index] - worldPos);
+                float ndl = saturate(dot(normalize(normal), L));
+                float texel = 1.0 / _SpotLightShadowMapSize;
+                float bias = (_DepthBias + _NormalBias * (1.0 - ndl)) * texel;
+
+                // Current fragment depth in light space
+                float currDepth = lp.z;
+
+                // PCF 5×5
+                float shadow = 0.0;
+                int samples = 0;
+
+                for (int x = - 2; x <= 2; x ++)
+                {
+                    for (int y = - 2; y <= 2; y ++)
+                    {
+                        float2 offset = float2(x, y) * texel;
+                        float2 sampleUV = uv + offset;
+                                                
+                        float shadowMapDepth = UNITY_SAMPLE_TEX2DARRAY(_SpotLightShadowMaps, float3(sampleUV, index)).r;
+
+                        #if defined(UNITY_REVERSED_Z)
+                        shadow += (currDepth <= shadowMapDepth + bias) ? 0.0 : 1.0;
+                        #else
+                        shadow += (currDepth >= shadowMapDepth + bias) ? 0.0 : 1.0;
+                        #endif
+
+                        samples ++;
+                    }
+                }
+
+                return shadow / samples; // 0 = shadowed, 1 = lit
+            }
+
+
+
             float4 frag (v2f i) : SV_Target
             {
                 float3 totalLight = 0;
@@ -179,52 +232,54 @@ Shader "Custom/BlinnPhong"
 
 
                 // Point lights contribution
-                for (int p = 0; p < _NumPointLights; p ++)
+                if (_NumPointLights > 0)
                 {
-                    float3 L = _PointLightPos[p] - i.worldPos;
-                    float dist = length(L);
-                    L = normalize(L);
+                    for (int p = 0; p < _NumPointLights; p ++)
+                    {
+                        float3 L = _PointLightPos[p] - i.worldPos;
+                        float dist = length(L);
+                        L = normalize(L);
 
-                    float attenuation = saturate(1.0 - dist / _PointLightRange[p]);
+                        float attenuation = saturate(1.0 - dist / _PointLightRange[p]);
 
-                    float diff = max(0, dot(N, L));
-                    float3 H = normalize(L + V);
-                    float spec = pow(max(0, dot(N, H)), _Shininess);
+                        float diff = max(0, dot(N, L));
+                        float3 H = normalize(L + V);
+                        float spec = pow(max(0, dot(N, H)), _Shininess);
 
-                    totalLight += attenuation * (_Kd.rgb * _PointLightColor[p] * _PointLightIntensity[p] * diff +
-                    _Ks.rgb * _PointLightColor[p] * _PointLightIntensity[p] * spec);
+                        totalLight += attenuation * (
+                        _Kd.rgb * _PointLightColor[p] * _PointLightIntensity[p] * diff +
+                        _Ks.rgb * _PointLightColor[p] * _PointLightIntensity[p] * spec
+                        );
+                    }
                 }
 
+
                 // Spot lights contribution
-                for (int s = 0; s < _NumSpotLights; s ++)
+                if (_NumSpotLights > 0)
                 {
+                    for (int s = 0; s < _NumSpotLights; s ++)
+                    {
+                        float3 L = _SpotLightPos[s] - i.worldPos;
+                        float dist = length(L);
+                        L = normalize(L);
 
-                    /*
+                        float spotFactor = dot(normalize(- _SpotLightDir[s]), L); // Unity's forward is opposite
+                        float cutoff = _SpotLightAngle[s];
+                        float spotAtten = (spotFactor > cutoff) ? spotFactor : 0;
 
-                    float4 shadowCoord = mul(_SpotLightShadowMatrix[i], float4(worldPos, 1));
-                    shadowCoord /= shadowCoord.w;
-                    float shadowDepth = tex2Dproj(_SpotLightShadowMaps[i], shadowCoord).r;
+                        float attenuation = saturate(1.0 - dist / _SpotLightRange[s]);
 
-                    */
+                        float diff = max(0, dot(N, L));
+                        float3 H = normalize(L + V);
+                        float spec = pow(max(0, dot(N, H)), _Shininess);
 
+                        // -- -- Shadow test for this spotlight -- --
+                        float shadow = ShadowFactorSpotLight(s, i.worldPos, i.normal);
 
-                    float3 L = _SpotLightPos[s] - i.worldPos;
-                    float dist = length(L);
-                    L = normalize(L);
-
-                    float spotFactor = dot(normalize(- _SpotLightDir[s]), L); // Unity’s light “forward” points opposite to light direction
-                    float cutoff = _SpotLightAngle[s];
-                    float spotAtten = (spotFactor > cutoff) ? spotFactor : 0;
-
-                    float attenuation = saturate(1.0 - dist / _SpotLightRange[s]);
-
-                    float diff = max(0, dot(N, L));
-                    float3 H = normalize(L + V);
-                    float spec = pow(max(0, dot(N, H)), _Shininess);
-
-                    totalLight += spotAtten * attenuation * (
-                    _Kd.rgb * _SpotLightColor[s] * _SpotLightIntensity[s] * diff +
-                    _Ks.rgb * _SpotLightColor[s] * _SpotLightIntensity[s] * spec);
+                        totalLight += shadow * spotAtten * attenuation * (
+                        _Kd.rgb * _SpotLightColor[s] * _SpotLightIntensity[s] * diff +
+                        _Ks.rgb * _SpotLightColor[s] * _SpotLightIntensity[s] * spec);
+                    }
                 }
 
                 // Ambient light contributions

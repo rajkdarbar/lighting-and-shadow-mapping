@@ -58,7 +58,6 @@ public class SingleSpotLightShadowMap : MonoBehaviour
         var scShader = Shader.Find("Custom/ShadowCasterSpotLight");
         if (scShader != null)
         {
-            //shadowCam.RenderWithShader(scShader, null);
             shadowCam.RenderWithShader(scShader, "RenderType");
         }
     }

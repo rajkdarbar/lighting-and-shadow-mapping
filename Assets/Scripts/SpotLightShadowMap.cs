@@ -1,4 +1,3 @@
-
 using UnityEngine;
 
 public class SpotLightShadowMap : MonoBehaviour
@@ -12,7 +11,7 @@ public class SpotLightShadowMap : MonoBehaviour
     void Start()
     {
         spot = GetComponent<Light>();
-        shadowCasterShader = Shader.Find("Custom/ShadowCaster");
+        shadowCasterShader = Shader.Find("Custom/ShadowCasterSpotLight");
 
         // Shadow camera
         GameObject camObj = new GameObject("ShadowCam_" + gameObject.name);
@@ -26,7 +25,7 @@ public class SpotLightShadowMap : MonoBehaviour
 
     public void RenderToSlice(RenderTexture shadowArray)
     {
-        if (!spot || sliceIndex < 0) return;
+        if (!spot || !spot.enabled || sliceIndex < 0) return;
 
         // Configure shadow camera
         shadowCam.transform.position = transform.position;
@@ -36,22 +35,28 @@ public class SpotLightShadowMap : MonoBehaviour
         shadowCam.nearClipPlane = 0.1f;
         shadowCam.farClipPlane = spot.range;
 
-        // Temporary RT to render into
-        RenderTexture tmp = RenderTexture.GetTemporary(
+        // Allocate temporary depth RT
+        RenderTexture tmp = new RenderTexture(
             shadowArray.width,
             shadowArray.height,
-            16,
-            shadowArray.format
+            24,
+            RenderTextureFormat.Depth
         );
+        tmp.dimension = UnityEngine.Rendering.TextureDimension.Tex2D;
+        tmp.useMipMap = false;
+        tmp.filterMode = FilterMode.Bilinear;
+        tmp.wrapMode = TextureWrapMode.Clamp;
+        tmp.Create();
 
+        // Render depth
         shadowCam.targetTexture = tmp;
-        shadowCam.RenderWithShader(shadowCasterShader, null);
+        shadowCam.RenderWithShader(shadowCasterShader, "RenderType");
         shadowCam.targetTexture = null;
 
-        // Copy into the correct slice of the array
+        // Copy into slice of array
         Graphics.CopyTexture(tmp, 0, 0, shadowArray, sliceIndex, 0);
 
-        RenderTexture.ReleaseTemporary(tmp);
+        tmp.Release();
     }
 
     public Matrix4x4 GetViewProjectionMatrix()

@@ -48,7 +48,7 @@ public class DirectionalLightShadowMap : MonoBehaviour
 
     void LateUpdate()
     {
-        if (mainCam == null || shadowCam == null) return;
+        if (mainCam == null || shadowCam == null || !dirLight.enabled) return;
 
         // Frustum corners of main camera in world space
         Vector3[] frustumCorners = new Vector3[8];
@@ -106,10 +106,8 @@ public class DirectionalLightShadowMap : MonoBehaviour
         if (scShader != null)
         {
             shadowCam.RenderWithShader(scShader, "RenderType");
-            //shadowCam.RenderWithShader(scShader, null);           
         }
     }
-
 
     void GetFrustumCornersWorld(Camera cam, Vector3[] outCorners)
     {

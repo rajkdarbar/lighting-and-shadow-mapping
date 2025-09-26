@@ -15,12 +15,12 @@ public class SpotLightShadowManager : MonoBehaviour
 
     void Start()
     {
-        // Count spotlights dynamically
-        spotShadows = GetComponentsInChildren<SpotLightShadowMap>();
+        // Find all spotlight shadow components
+        spotShadows = GetComponentsInChildren<SpotLightShadowMap>(true);
         count = spotShadows.Length;
 
-        // Allocate 2D texture array for all spotlights
-        shadowArray = new RenderTexture(shadowResolution, shadowResolution, 16, RenderTextureFormat.RFloat);
+        // Allocate 2D texture array for all potential spotlights
+        shadowArray = new RenderTexture(shadowResolution, shadowResolution, 24, RenderTextureFormat.Depth);
         shadowArray.dimension = UnityEngine.Rendering.TextureDimension.Tex2DArray;
         shadowArray.volumeDepth = Mathf.Max(1, count);
         shadowArray.useMipMap = false;
@@ -29,24 +29,31 @@ public class SpotLightShadowManager : MonoBehaviour
         shadowArray.Create();
 
         // Global for shaders
+        Shader.SetGlobalFloat("_SpotLightShadowMapSize", shadowResolution);
         Shader.SetGlobalTexture("_SpotLightShadowMaps", shadowArray);
 
+        // Debug quad
         var quad = GameObject.Find("QuadSpotLight");
         if (quad != null)
         {
-            var m = new Material(Shader.Find("Custom/ShowSpotLightShadowMap"));
-            m.SetTexture("_ShadowMaps", shadowArray); // or "_SpotLightShadowMaps" depending on your shader
+            var m = new Material(Shader.Find("Custom/ShowSpotLightShadowMapArray"));
+            m.SetTexture("_ShadowMaps", shadowArray);
             quad.GetComponent<Renderer>().material = m;
         }
     }
 
     void LateUpdate()
     {
-        Matrix4x4[] matrices = new Matrix4x4[count];
+        List<Matrix4x4> matrices = new List<Matrix4x4>();
         int nextSlice = 0;
 
         foreach (var spot in spotShadows)
         {
+            // Skip if disabled or not active
+            if (spot == null || !spot.isActiveAndEnabled) continue;
+            Light l = spot.GetComponent<Light>();
+            if (!l || !l.enabled) continue;
+
             int id = spot.GetInstanceID();
 
             // Stable slice index
@@ -60,14 +67,17 @@ public class SpotLightShadowManager : MonoBehaviour
             spot.RenderToSlice(shadowArray);
 
             // Store VP matrix
-            matrices[slice] = spot.GetViewProjectionMatrix();
+            matrices.Add(spot.GetViewProjectionMatrix());
         }
 
-        // Global for shaders
-        Shader.SetGlobalInt("_NumSpotLights", count);
-        Shader.SetGlobalMatrixArray("_SpotLightViewProjectionMatrix", matrices);
+        int activeCount = matrices.Count;
+        if (activeCount > 0)
+        {
+            // Global for shaders
+            Shader.SetGlobalMatrixArray("_SpotLightViewProjectionMatrix", matrices.ToArray());
+        }
 
-        // Debug view: just pass array + slice to material (already on Quad)
+        // Debug view
         int maxSlice = Mathf.Max(0, shadowArray.volumeDepth - 1);
         Shader.SetGlobalInt("_Slice", Mathf.Clamp(debugSlice, 0, maxSlice));
     }

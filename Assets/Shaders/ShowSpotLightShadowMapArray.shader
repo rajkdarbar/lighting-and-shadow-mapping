@@ -1,9 +1,10 @@
 
-Shader "Custom/ShowDirLightShadowMap"
+Shader "Custom/ShowSpotLightShadowMapArray"
 {
     Properties
     {
-        _ShadowMap ("Shadow Map", 2D) = "white" {}
+        _ShadowMaps("Shadow Maps", 2DArray) = "" {}
+        _Slice("Slice Index", Int) = 0
     }
     SubShader
     {
@@ -40,15 +41,28 @@ Shader "Custom/ShowDirLightShadowMap"
                 return o;
             }
 
-            sampler2D _ShadowMap;
+            // Declare array
+            UNITY_DECLARE_TEX2DARRAY(_ShadowMaps);
+            int _Slice;
 
             fixed4 frag(v2f i) : SV_Target
             {
-                float d = tex2D(_ShadowMap, i.uv).r;
-                d = pow(d, 0.2f);
-                return float4(d, d, d, 1);
+                // Sample depth from given slice
+                float raw = UNITY_SAMPLE_TEX2DARRAY(_ShadowMaps, float3(i.uv, _Slice)).r;
+
+                // Convert to linear [0..1]
+                float d = Linear01Depth(raw);
+
+                // Flip if reversed Z (Unity uses this on DX11 +)
+                #if defined(UNITY_REVERSED_Z)
+                d = 1.0 - d;
+                #endif
+
+                return fixed4(d, d, d, 1);
             }
             ENDCG
         }
     }
 }
+
+

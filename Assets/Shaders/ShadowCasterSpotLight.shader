@@ -8,7 +8,7 @@ Shader "Custom/ShadowCasterSpotLight"
             Cull Front
             Offset 2, 2
             ZWrite On
-            ColorMask 0   // <-- important: don’t write colors
+            ColorMask 0 // don’t write colors
 
             CGPROGRAM
             #pragma vertex vert
