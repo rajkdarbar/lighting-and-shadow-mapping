@@ -15,11 +15,13 @@ Shader "Custom/ShadowCasterDirLight"
             #pragma fragment frag
             #include "UnityCG.cginc"
 
-            struct appdata {
+            struct appdata
+            {
                 float4 vertex : POSITION;
             };
 
-            struct v2f {
+            struct v2f
+            {
                 float4 pos : SV_POSITION;
             };
 
@@ -33,7 +35,6 @@ Shader "Custom/ShadowCasterDirLight"
             float frag(v2f i) : SV_Target
             {
                 return i.pos.z / i.pos.w; // encode depth automatically from SV_POSITION.z / SV_POSITION
-
             }
 
             ENDCG

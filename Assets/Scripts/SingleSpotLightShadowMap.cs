@@ -17,8 +17,6 @@ public class SingleSpotLightShadowMap : MonoBehaviour
         //shadowMap = new RenderTexture(shadowResolution, shadowResolution, 16, RenderTextureFormat.RFloat);
         //shadowMap = new RenderTexture(shadowResolution, shadowResolution, 16, RenderTextureFormat.ARGB32);
         shadowMap = new RenderTexture(shadowResolution, shadowResolution, 24, RenderTextureFormat.Depth);
-
-
         shadowMap.useMipMap = false;
         shadowMap.filterMode = FilterMode.Bilinear;
         shadowMap.wrapMode = TextureWrapMode.Clamp;
@@ -38,7 +36,7 @@ public class SingleSpotLightShadowMap : MonoBehaviour
         var quad = GameObject.Find("QuadSpotLight");
         if (quad != null)
         {
-            var m = new Material(Shader.Find("Custom/ShowSpotLightShadowMap"));
+            var m = quad.GetComponent<Renderer>().material;
             m.SetTexture("_ShadowMap", shadowMap);
             quad.GetComponent<Renderer>().material = m;
         }

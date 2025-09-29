@@ -16,7 +16,8 @@ public class CustomLightSender : MonoBehaviour
             {
                 Vector3 dir = l.transform.forward;
                 Shader.SetGlobalColor("_DirectionalLightColor", l.color * l.intensity);
-                Shader.SetGlobalVector("_DirectionalLightDir", dir); // negate in shader
+                Shader.SetGlobalVector("_DirectionalLightDir", dir); // negate in shade
+                Shader.SetGlobalFloat("_DirectionalLightIntensity", l.intensity);
                 dirFound = true;
                 break; // only one
             }
@@ -27,7 +28,9 @@ public class CustomLightSender : MonoBehaviour
             // reset if no directional light active
             Shader.SetGlobalColor("_DirectionalLightColor", Color.black);
             Shader.SetGlobalVector("_DirectionalLightDir", Vector3.zero);
+            Shader.SetGlobalFloat("_DirectionalLightIntensity", 0f);
         }
+
 
         // --- Point lights ---
         List<Vector4> pointPositions = new List<Vector4>();

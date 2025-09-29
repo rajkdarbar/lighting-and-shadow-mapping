@@ -13,8 +13,8 @@ Shader "Custom/BlinnPhong"
         _AmbientColor("Ambient Light Color", Color) = (1, 1, 1, 1)
         _AmbientIntensity("Ambient Light Intensity", Range(0, 2)) = 1.0
 
-        _DepthBias("Depth Bias", Range(0, 3)) = 1
-        _NormalBias("Normal Bias", Range(0, 3)) = 1
+        _DepthBias("Depth Bias", Range(0, 3)) = 0.01
+        _NormalBias("Normal Bias", Range(0, 3)) = 0.02
     }
 
     SubShader
@@ -63,6 +63,13 @@ Shader "Custom/BlinnPhong"
             uniform float3 _PointLightColor[4];
             uniform float _PointLightIntensity[4];
             uniform float _PointLightRange[4];
+
+            //samplerCUBE _PointLightShadowMap;
+            uniform float _PointLightShadowMapSize;
+            uniform float3 _PointLightPos0;
+            uniform float _PointLightRange0;
+            UNITY_DECLARE_TEXCUBE(_PointLightShadowMap);
+
 
             // Spot lights
             uniform int _NumSpotLights;
@@ -195,7 +202,7 @@ Shader "Custom/BlinnPhong"
                     {
                         float2 offset = float2(x, y) * texel;
                         float2 sampleUV = uv + offset;
-                                                
+
                         float shadowMapDepth = UNITY_SAMPLE_TEX2DARRAY(_SpotLightShadowMaps, float3(sampleUV, index)).r;
 
                         #if defined(UNITY_REVERSED_Z)
@@ -210,6 +217,60 @@ Shader "Custom/BlinnPhong"
 
                 return shadow / samples; // 0 = shadowed, 1 = lit
             }
+
+            // -- -- Pointlight shadow test -- --
+            float ShadowFactorPointLight(float3 worldPos, float3 normal)
+            {
+                // vector from light to fragment
+                float3 L = worldPos - _PointLightPos0;
+                float distToLight = length(L);
+                float3 dir = normalize(L);
+
+                // normalize distance [0, 1]
+                float distToLightNorm = distToLight / _PointLightRange0;
+
+                // estimate texel size in cubemap
+                float texelSize = 1.0 / _PointLightShadowMapSize;
+
+                // slope - scaled bias (helps fight acne)
+                float ndl = saturate(dot(normalize(normal), - normalize(L)));
+                float bias = _DepthBias * (1.0 - ndl) + _NormalBias * texelSize;
+
+                // Poisson / cube jitter offsets (16 samples)
+                float3 poisson[16] = {
+                    float3(0.355, 0.355, 0),
+                    float3(- 0.355, 0.355, 0),
+                    float3(0.355, - 0.355, 0),
+                    float3(- 0.355, - 0.355, 0),
+                    float3(0.707, 0, 0.707),
+                    float3(- 0.707, 0, 0.707),
+                    float3(0.707, 0, - 0.707),
+                    float3(- 0.707, 0, - 0.707),
+                    float3(0, 0.707, 0.707),
+                    float3(0, - 0.707, 0.707),
+                    float3(0, 0.707, - 0.707),
+                    float3(0, - 0.707, - 0.707),
+                    float3(0.577, 0.577, 0.577),
+                    float3(- 0.577, 0.577, 0.577),
+                    float3(0.577, - 0.577, 0.577),
+                    float3(0.577, 0.577, - 0.577)
+                };
+
+                float shadow = 0.0;
+
+                for (int i = 0; i < 16; i ++)
+                {
+                    float3 sampleDir = normalize(dir + poisson[i] * texelSize);
+                    float shadowDistNorm = UNITY_SAMPLE_TEXCUBE(_PointLightShadowMap, sampleDir).r;
+
+                    shadow += (distToLightNorm <= shadowDistNorm + bias) ? 1.0 : 0.0;
+                }
+
+                return shadow / 16.0; // average for soft shadows
+            }
+
+
+
 
 
 
@@ -231,6 +292,7 @@ Shader "Custom/BlinnPhong"
                 _Ks.rgb * _DirectionalLightColor * _DirectionalLightIntensity * spec);
 
 
+                /*
                 // Point lights contribution
                 if (_NumPointLights > 0)
                 {
@@ -252,6 +314,33 @@ Shader "Custom/BlinnPhong"
                         );
                     }
                 }
+                */
+
+                // Point lights contribution
+                if (_NumPointLights > 0)
+                {
+                    for (int p = 0; p < _NumPointLights; p ++)
+                    {
+                        float3 L = _PointLightPos[p] - i.worldPos;
+                        float dist = length(L);
+                        L = normalize(L);
+
+                        float attenuation = saturate(1.0 - dist / _PointLightRange[p]);
+
+                        float diff = max(0, dot(N, L));
+                        float3 H = normalize(L + V);
+                        float spec = pow(max(0, dot(N, H)), _Shininess);
+
+                        // -- -- Shadow test -- --
+                        float shadow = ShadowFactorPointLight(i.worldPos, i.normal);
+
+                        totalLight += shadow * attenuation * (
+                        _Kd.rgb * _PointLightColor[p] * _PointLightIntensity[p] * diff +
+                        _Ks.rgb * _PointLightColor[p] * _PointLightIntensity[p] * spec
+                        );
+                    }
+                }
+
 
 
                 // Spot lights contribution

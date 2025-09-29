@@ -1,5 +1,5 @@
 
-Shader "Custom/ShadowCasterSpotLight"
+Shader "Custom/ShadowCasterPointLight"
 {
     SubShader
     {
@@ -9,7 +9,6 @@ Shader "Custom/ShadowCasterSpotLight"
             Cull Front
             Offset 2, 2
             ZWrite On
-            ColorMask 0 // don’t write colors
 
             CGPROGRAM
             #pragma vertex vert
@@ -21,21 +20,24 @@ Shader "Custom/ShadowCasterSpotLight"
                 float4 vertex : POSITION;
             };
 
-            struct v2f
-            {
+            struct v2f {
                 float4 pos : SV_POSITION;
+                float3 worldPos : TEXCOORD0;
             };
 
-            v2f vert(appdata v)
-            {
+            uniform float3 _PointLightPos0;
+            uniform float _PointLightRange0;
+
+            v2f vert(appdata v) {
                 v2f o;
                 o.pos = UnityObjectToClipPos(v.vertex);
+                o.worldPos = mul(unity_ObjectToWorld, v.vertex).xyz;
                 return o;
             }
 
-            float frag(v2f i) : SV_Target
-            {
-                return 0; // ignored, only depth buffer matters
+            float frag(v2f i) : SV_Target {
+                float dist = length(i.worldPos - _PointLightPos0) / _PointLightRange0;
+                return dist;
             }
             ENDCG
         }

@@ -35,8 +35,8 @@ public class SpotLightShadowManager : MonoBehaviour
         // Debug quad
         var quad = GameObject.Find("QuadSpotLight");
         if (quad != null)
-        {
-            var m = new Material(Shader.Find("Custom/ShowSpotLightShadowMapArray"));
+        {            
+            var m = quad.GetComponent<Renderer>().material;
             m.SetTexture("_ShadowMaps", shadowArray);
             quad.GetComponent<Renderer>().material = m;
         }
