@@ -7,13 +7,14 @@ Shader "Custom/ShadowCasterDirLight"
         Pass
         {
             Cull Front // helps to reduce shadow acne
-            Offset 2, 2 // bias = m.tan(θ) + r
             ZWrite On
 
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
             #include "UnityCG.cginc"
+
+            float4x4 _DirLightViewProjectionMatrix;
 
             struct appdata
             {
@@ -28,13 +29,16 @@ Shader "Custom/ShadowCasterDirLight"
             v2f vert(appdata v)
             {
                 v2f o;
-                o.pos = UnityObjectToClipPos(v.vertex); // transform into shadow camera clip space
+                float4 worldPos = mul(unity_ObjectToWorld, v.vertex);
+                o.pos = mul(_DirLightViewProjectionMatrix, worldPos);
+
                 return o;
             }
 
             float frag(v2f i) : SV_Target
             {
-                return i.pos.z / i.pos.w; // encode depth automatically from SV_POSITION.z / SV_POSITION
+                float d = i.pos.z / i.pos.w; // d is in [0, 1]              
+                return d;
             }
 
             ENDCG

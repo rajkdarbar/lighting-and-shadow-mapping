@@ -1,4 +1,4 @@
-Shader "Custom/ShowPointLightShadowMap"
+Shader "Custom/QuadShowPointLightShadowMap"
 {
     Properties
     {
@@ -8,7 +8,7 @@ Shader "Custom/ShowPointLightShadowMap"
 
     SubShader
     {
-        Tags { "Queue" = "Overlay" "RenderType" = "Opaque" }
+        Tags {"RenderType" = "Opaque" }
         Pass
         {
             ZTest Always

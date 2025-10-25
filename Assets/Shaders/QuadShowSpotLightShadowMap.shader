@@ -1,13 +1,13 @@
-
-Shader "Custom/ShowDirLightShadowMap"
+Shader "Custom/QuadShowSpotLightShadowMap"
 {
     Properties
     {
-        _ShadowMap ("Shadow Map", 2D) = "white" {}
+        _ShadowMap("Shadow Map", 2D) = "white" {}
     }
+
     SubShader
     {
-        Tags { "Queue" = "Overlay" "RenderType" = "Opaque" }
+        Tags {"RenderType" = "Opaque" }
         Pass
         {
             ZTest Always
@@ -19,6 +19,8 @@ Shader "Custom/ShowDirLightShadowMap"
             #pragma vertex vert
             #pragma fragment frag
             #include "UnityCG.cginc"
+
+            sampler2D _ShadowMap;
 
             struct appdata
             {
@@ -40,14 +42,18 @@ Shader "Custom/ShowDirLightShadowMap"
                 return o;
             }
 
-            sampler2D _ShadowMap;
-
-            fixed4 frag(v2f i) : SV_Target
+            float4 frag(v2f i) : SV_Target
             {
-                float d = tex2D(_ShadowMap, i.uv).r;
-                d = pow(d, 0.2f);
+                float2 uv = i.uv;
+
+                #if UNITY_UV_STARTS_AT_TOP
+                uv.y = 1.0 - uv.y;
+                #endif
+
+                float d = tex2D(_ShadowMap, uv).r;
                 return float4(d, d, d, 1);
             }
+
             ENDCG
         }
     }

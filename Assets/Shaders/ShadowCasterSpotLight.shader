@@ -1,4 +1,3 @@
-
 Shader "Custom/ShadowCasterSpotLight"
 {
     SubShader
@@ -7,14 +6,17 @@ Shader "Custom/ShadowCasterSpotLight"
         Pass
         {
             Cull Front
-            Offset 2, 2
             ZWrite On
-            ColorMask 0 // don’t write colors
+            ColorMask R // write to the R channel (RFloat texture)
 
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
             #include "UnityCG.cginc"
+            
+            float4x4 _SpotLight_VP_ShadowCaster; // for rasterization
+            float4x4 _SpotLight_View_ShadowCaster; // for view - space position
+            float _SpotLightFar_ShadowCaster; // for normalization
 
             struct appdata
             {
@@ -24,19 +26,28 @@ Shader "Custom/ShadowCasterSpotLight"
             struct v2f
             {
                 float4 pos : SV_POSITION;
+                float3 viewPos : TEXCOORD0;
             };
 
             v2f vert(appdata v)
             {
                 v2f o;
-                o.pos = UnityObjectToClipPos(v.vertex);
+                float4 worldPos = mul(unity_ObjectToWorld, v.vertex);
+                o.pos = mul(_SpotLight_VP_ShadowCaster, worldPos);
+                o.viewPos = mul(_SpotLight_View_ShadowCaster, worldPos).xyz;
+
                 return o;
             }
 
+
             float frag(v2f i) : SV_Target
             {
-                return 0; // ignored, only depth buffer matters
+                float linearDepth = length(i.viewPos); // distance from light in view - space
+                linearDepth /= _SpotLightFar_ShadowCaster; // normalize to [0, 1] for easy debugging
+
+                return linearDepth;
             }
+
             ENDCG
         }
     }

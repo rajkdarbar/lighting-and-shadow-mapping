@@ -16,7 +16,7 @@ public class PointLightShadowMap : MonoBehaviour
         shadowCasterShader = Shader.Find("Custom/ShadowCasterPointLight");
 
         // Create cubemap render texture
-        shadowCubemap = new RenderTexture(shadowResolution, shadowResolution, 24, RenderTextureFormat.RFloat);
+        shadowCubemap = new RenderTexture(shadowResolution, shadowResolution, 0, RenderTextureFormat.RFloat);
         shadowCubemap.dimension = UnityEngine.Rendering.TextureDimension.Cube;
         shadowCubemap.useMipMap = false;
         shadowCubemap.autoGenerateMips = false;
@@ -28,7 +28,10 @@ public class PointLightShadowMap : MonoBehaviour
         shadowCam = camObj.AddComponent<Camera>();
         shadowCam.enabled = false;
         shadowCam.orthographic = false;
+
         shadowCam.clearFlags = CameraClearFlags.SolidColor;
+        shadowCam.backgroundColor = Color.white;
+
         shadowCam.nearClipPlane = 0.1f;
         shadowCam.farClipPlane = pointLight.range;
         shadowCam.fieldOfView = 90f; // 90° per cube face
@@ -61,6 +64,9 @@ public class PointLightShadowMap : MonoBehaviour
             shadowCam.transform.position = transform.position;
             shadowCam.transform.rotation = GetCubemapFaceRotation(face);
 
+            shadowCam.clearFlags = CameraClearFlags.SolidColor;
+            shadowCam.backgroundColor = Color.white;
+
             // Projection and view
             Matrix4x4 proj = Matrix4x4.Perspective(90f, 1f, shadowCam.nearClipPlane, shadowCam.farClipPlane);
             Matrix4x4 view = shadowCam.worldToCameraMatrix;
@@ -68,7 +74,7 @@ public class PointLightShadowMap : MonoBehaviour
 
             // Temporary 2D depth texture
             RenderTexture tmp = RenderTexture.GetTemporary(
-                shadowResolution, shadowResolution, 24, RenderTextureFormat.RFloat
+                shadowResolution, shadowResolution, 0, RenderTextureFormat.RFloat
             );
 
             shadowCam.targetTexture = tmp;
@@ -107,4 +113,8 @@ public class PointLightShadowMap : MonoBehaviour
                 return Quaternion.identity;
         }
     }
+
+    void OnEnable() => Shader.SetGlobalFloat("_UsePointShadow", 1);
+    void OnDisable() => Shader.SetGlobalFloat("_UsePointShadow", 0);
+
 }

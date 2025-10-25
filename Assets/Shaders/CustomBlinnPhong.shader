@@ -27,16 +27,9 @@ Shader "Custom/BlinnPhong"
             #pragma fragment frag
             #include "UnityCG.cginc"
 
-            struct appdata {
-                float4 vertex : POSITION;
-                float3 normal : NORMAL;
-            };
-
-            struct v2f {
-                float4 pos : SV_POSITION;
-                float3 normal : TEXCOORD0;
-                float3 worldPos : TEXCOORD1;
-            };
+            float _UseDirShadow;
+            float _UseSpotShadow;
+            float _UsePointShadow;
 
             // Material properties
             fixed4 _Ka;
@@ -48,47 +41,65 @@ Shader "Custom/BlinnPhong"
             fixed4 _AmbientColor;
             float _AmbientIntensity;
 
-            // Directional Light
-            uniform float3 _DirectionalLightColor;
-            uniform float3 _DirectionalLightDir;
-            uniform float _DirectionalLightIntensity;
+            // Directional light
+            float3 _DirectionalLightColor;
+            float3 _DirectionalLightDir;
+            float _DirectionalLightIntensity;
 
             sampler2D _DirLightShadowMap;
             float4x4 _DirLightViewProjectionMatrix;
+            float _DepthBiasDirLight;
+
             float _DepthBias, _NormalBias, _DirLightShadowMapSize;
 
-            // Point lights
-            uniform int _NumPointLights;
-            uniform float3 _PointLightPos[4];
-            uniform float3 _PointLightColor[4];
-            uniform float _PointLightIntensity[4];
-            uniform float _PointLightRange[4];
+            // Spot light
+            float3 _SpotLightPos;
+            float3 _SpotLightDir;
+            float3 _SpotLightColor;
+            float _SpotLightIntensity;
+            float _SpotLightRange;
+            float _SpotLightAngle;
+            float _SpotLightShadowMapSize;
+            float _SpotLightNear;
+            float _SpotLightFar;
+            float _DepthBiasSpotlight, _NormalBiasSpotlight;
+
+            sampler2D _SpotLightShadowMap;
+            float4x4 _SpotLightVP;
+            float4x4 _SpotLightV;
+
+            // Point light
+            int _NumPointLights;
+            float3 _PointLightPos[4];
+            float3 _PointLightColor[4];
+            float _PointLightIntensity[4];
+            float _PointLightRange[4];
 
             //samplerCUBE _PointLightShadowMap;
-            uniform float _PointLightShadowMapSize;
-            uniform float3 _PointLightPos0;
-            uniform float _PointLightRange0;
+            float _PointLightShadowMapSize;
+            float3 _PointLightPos0;
+            float _PointLightRange0;
             UNITY_DECLARE_TEXCUBE(_PointLightShadowMap);
 
 
-            // Spot lights
-            uniform int _NumSpotLights;
-            uniform float3 _SpotLightPos[4];
-            uniform float3 _SpotLightDir[4];
-            uniform float3 _SpotLightColor[4];
-            uniform float _SpotLightIntensity[4];
-            uniform float _SpotLightRange[4];
-            uniform float _SpotLightAngle[4];
-            uniform float _SpotLightShadowMapSize;
+            struct appdata
+            {
+                float4 vertex : POSITION;
+                float3 normal : NORMAL;
+            };
 
-            float4x4 _SpotLightViewProjectionMatrix[4];
-            UNITY_DECLARE_TEX2DARRAY(_SpotLightShadowMaps);
-
+            struct v2f
+            {
+                float4 pos : SV_POSITION;
+                float3 normal : TEXCOORD0;
+                float3 worldPos : TEXCOORD1;
+            };
 
 
             v2f vert (appdata v)
             {
                 v2f o;
+
                 o.pos = UnityObjectToClipPos(v.vertex);
                 o.normal = UnityObjectToWorldNormal(v.normal);
                 o.worldPos = mul(unity_ObjectToWorld, v.vertex).xyz;
@@ -96,46 +107,32 @@ Shader "Custom/BlinnPhong"
                 return o;
             }
 
-            // -- -- Directional light shadow test -- --
+            // Directional light shadow test
             float ShadowFactorDirectionalLight(float3 worldPos, float3 normal)
             {
-                float4 lp = mul(_DirLightViewProjectionMatrix, float4(worldPos, 1));
-                lp.xyz /= lp.w; // x, y, z ∈ [ - 1, 1]
+                float4 clipPos = mul(_DirLightViewProjectionMatrix, float4(worldPos, 1));
+                float3 ndc = clipPos.xyz / clipPos.w; // x, y ∈ [ - 1, 1], but z ∈ [0, 1]
 
-                float2 uv = lp.xy * 0.5 + 0.5; // maps from [ - 1, 1] → [0, 1]
+                float2 uv = ndc.xy * 0.5 + 0.5; // maps from [ - 1, 1] → [0, 1]
 
                 #if UNITY_UV_STARTS_AT_TOP
                 uv.y = 1.0 - uv.y; // when sampling the shadow map, we always assume (0, 0) = bottom - left
                 #endif
 
                 // Outside shadow map
-                if (uv.x<0||uv.x>1||uv.y<0||uv.y>1) return 1.0;
+                if (uv.x<0||uv.x>1||uv.y<0||uv.y>1)
+                return 1.0;
 
-                // slope - scaled depth bias
-                float3 L = normalize(- _DirectionalLightDir);
-                float ndl = saturate(dot(normalize(normal), L));
+                // Slope - scaled depth bias
                 float texel = 1.0 / _DirLightShadowMapSize;
-                float bias = (_DepthBias + _NormalBias * (1.0 - ndl)) * texel;
+                float3 L = normalize(- _DirectionalLightDir);
+                float3 N = normalize(normal);
+                float NdotL = saturate(dot(N, L));
+                float bias = (_DepthBiasDirLight * (1.0 - NdotL)) * texel;
+                bias = max(bias, 0.0001);
 
-                /*
-
-                // This part is for hard shadow edges
-
-                float currDepth = lp.z;
-                float shadowMapDepth = tex2D(_DirLightShadowMap, uv).r;
-
-                // 0 = shadow, 1 = lit
-                #if defined(UNITY_REVERSED_Z)
-                return (currDepth <= shadowMapDepth + bias) ? 0.0 : 1.0;
-                #else
-                return (currDepth >= shadowMapDepth + bias) ? 0.0 : 1.0;
-                #endif
-
-                */
-
-
-                // -- -- -- -- PCF 5×5 -- -- -- --
-                float currDepth = lp.z;
+                // PCF 5×5
+                float currDepth = ndc.z; // already in [0, 1]
 
                 float shadow = 0.0;
                 int samples = 0;
@@ -147,7 +144,7 @@ Shader "Custom/BlinnPhong"
                     {
                         float2 offset = float2(x, y) * texel;
                         float2 sampleUV = uv + offset;
-                        float shadowMapDepth = tex2D(_DirLightShadowMap, sampleUV).r;
+                        float shadowMapDepth = tex2D(_DirLightShadowMap, sampleUV).r; // [0, 1] range
 
                         // 0 = shadow, 1 = lit
                         #if defined(UNITY_REVERSED_Z)
@@ -160,20 +157,22 @@ Shader "Custom/BlinnPhong"
                     }
                 }
 
-                // average all samples
                 return shadow / samples; // 0 = fully shadowed, 1 = fully lit, values in between = soft edge
             }
 
 
-            // -- -- Spotlight shadow test -- --
-            float ShadowFactorSpotLight(int index, float3 worldPos, float3 normal)
-            {
-                // Transform world position into the spotlight’s clip space
-                float4 lp = mul(_SpotLightViewProjectionMatrix[index], float4(worldPos, 1));
-                lp.xyz /= lp.w; // perspective divide → NDC [ - 1, 1]
 
-                // Convert to UV [0, 1]
-                float2 uv = lp.xy * 0.5 + 0.5;
+            // Spotlight shadow test using view - space depth
+            float ShadowFactorSpotLight(float3 worldPos, float3 normal)
+            {
+                // Transform world position into light view - space
+                float3 lightViewPos = mul(_SpotLightV, float4(worldPos, 1.0)).xyz;
+
+                // Project to clip space for UV
+                float4 clipPos = mul(_SpotLightVP, float4(worldPos, 1.0));
+                float3 ndc = clipPos.xyz / clipPos.w;
+
+                float2 uv = ndc.xy * 0.5 + 0.5;
 
                 #if UNITY_UV_STARTS_AT_TOP
                 uv.y = 1.0 - uv.y;
@@ -183,14 +182,17 @@ Shader "Custom/BlinnPhong"
                 if (uv.x < 0 || uv.x > 1 || uv.y < 0 || uv.y > 1)
                 return 1.0;
 
-                // Bias (similar to directional)
-                float3 L = normalize(_SpotLightPos[index] - worldPos);
-                float ndl = saturate(dot(normalize(normal), L));
-                float texel = 1.0 / _SpotLightShadowMapSize;
-                float bias = (_DepthBias + _NormalBias * (1.0 - ndl)) * texel;
+                // Current fragment’s depth in light’s view - space
+                float currDepth = length(lightViewPos); // distance from spotlight
+                currDepth /= _SpotLightFar; // normalize to [0, 1]
 
-                // Current fragment depth in light space
-                float currDepth = lp.z;
+                // Slope - scaled depth bias
+                float texel = 1.0 / _SpotLightShadowMapSize;
+                float3 L = normalize(_SpotLightDir);
+                float3 N = normalize(normal);
+                float NdotL = saturate(dot(N, L));
+                float bias = _DepthBiasSpotlight * (1.0 - NdotL) * texel;
+                bias = max(bias, 0.0001);
 
                 // PCF 5×5
                 float shadow = 0.0;
@@ -203,22 +205,18 @@ Shader "Custom/BlinnPhong"
                         float2 offset = float2(x, y) * texel;
                         float2 sampleUV = uv + offset;
 
-                        float shadowMapDepth = UNITY_SAMPLE_TEX2DARRAY(_SpotLightShadowMaps, float3(sampleUV, index)).r;
-
-                        #if defined(UNITY_REVERSED_Z)
-                        shadow += (currDepth <= shadowMapDepth + bias) ? 0.0 : 1.0;
-                        #else
-                        shadow += (currDepth >= shadowMapDepth + bias) ? 0.0 : 1.0;
-                        #endif
+                        float shadowMapDepth = tex2D(_SpotLightShadowMap, sampleUV).r;
+                        shadow += (currDepth > shadowMapDepth + bias) ? 0.0 : 1.0;
 
                         samples ++;
                     }
                 }
 
-                return shadow / samples; // 0 = shadowed, 1 = lit
+                return shadow / samples; // 1 = lit, 0 = shadowed
             }
 
-            // -- -- Pointlight shadow test -- --
+
+            // Point light shadow test
             float ShadowFactorPointLight(float3 worldPos, float3 normal)
             {
                 // vector from light to fragment
@@ -266,62 +264,76 @@ Shader "Custom/BlinnPhong"
                     shadow += (distToLightNorm <= shadowDistNorm + bias) ? 1.0 : 0.0;
                 }
 
-                return shadow / 16.0; // average for soft shadows
+                return shadow / 16.0;
             }
 
 
 
-
-
-
-            float4 frag (v2f i) : SV_Target
+            // Directional light contributions
+            float3 ComputeDirectionalLight(float3 N, float3 V, float3 worldPos)
             {
-                float3 totalLight = 0;
+                float3 total = 0;
 
-                // Directional light contributions
-                float3 L = normalize(- _DirectionalLightDir); // Unity’s light “forward” points opposite to light direction
-                float3 N = normalize(i.normal);
-                float3 V = normalize(_WorldSpaceCameraPos - i.worldPos);
+                float3 L = normalize(- _DirectionalLightDir); // Unity’s light forward points opposite to light direction
+
                 float diff = max(0, dot(N, L));
                 float3 H = normalize(L + V);
                 float spec = pow(max(0, dot(N, H)), _Shininess);
 
-                float shadow = ShadowFactorDirectionalLight(i.worldPos, i.normal);
+                float shadow = ShadowFactorDirectionalLight(worldPos, N);
 
-                totalLight += shadow * (_Kd.rgb * _DirectionalLightColor * _DirectionalLightIntensity * diff +
+                total += shadow * (_Kd.rgb * _DirectionalLightColor * _DirectionalLightIntensity * diff +
                 _Ks.rgb * _DirectionalLightColor * _DirectionalLightIntensity * spec);
 
+                return total;
+            }
 
-                /*
-                // Point lights contribution
+
+            // Spotlight contribution
+            float3 ComputeSpotLight(float3 N, float3 V, float3 worldPos)
+            {
+                float3 total = 0;
+
+                float3 L = _SpotLightPos - worldPos;
+                float dist = length(L);
+                L = normalize(L);
+
+                // Cone (angular) attenuation
+                float spotFactor = dot(normalize(_SpotLightDir), - L);
+                float cutoff = _SpotLightAngle;
+                float smoothEdge = lerp(cutoff, 1.0, 0.15);
+                float coneAtten = saturate((spotFactor - cutoff) / (smoothEdge - cutoff));
+                coneAtten = pow(coneAtten, 3.0);
+
+                // Distance attenuation
+                float rangeAtten = saturate(1.0 - dist / _SpotLightRange);
+
+                // Lighting
+                float diff = max(0, dot(N, L));
+                float3 H = normalize(L + V);
+                float spec = pow(max(0, dot(N, H)), _Shininess);
+
+                // Shadow calculation
+                float shadow = ShadowFactorSpotLight(worldPos, N);
+
+                total += shadow * coneAtten * rangeAtten * (
+                _Kd.rgb * _SpotLightColor * _SpotLightIntensity * diff +
+                _Ks.rgb * _SpotLightColor * _SpotLightIntensity * spec);
+
+                return total;
+            }
+
+
+            // Point light contribution
+            float3 ComputePointLight(float3 N, float3 V, float3 worldPos)
+            {
+                float total = 0;
+
                 if (_NumPointLights > 0)
                 {
                     for (int p = 0; p < _NumPointLights; p ++)
                     {
-                        float3 L = _PointLightPos[p] - i.worldPos;
-                        float dist = length(L);
-                        L = normalize(L);
-
-                        float attenuation = saturate(1.0 - dist / _PointLightRange[p]);
-
-                        float diff = max(0, dot(N, L));
-                        float3 H = normalize(L + V);
-                        float spec = pow(max(0, dot(N, H)), _Shininess);
-
-                        totalLight += attenuation * (
-                        _Kd.rgb * _PointLightColor[p] * _PointLightIntensity[p] * diff +
-                        _Ks.rgb * _PointLightColor[p] * _PointLightIntensity[p] * spec
-                        );
-                    }
-                }
-                */
-
-                // Point lights contribution
-                if (_NumPointLights > 0)
-                {
-                    for (int p = 0; p < _NumPointLights; p ++)
-                    {
-                        float3 L = _PointLightPos[p] - i.worldPos;
+                        float3 L = _PointLightPos[p] - worldPos;
                         float dist = length(L);
                         L = normalize(L);
 
@@ -332,50 +344,39 @@ Shader "Custom/BlinnPhong"
                         float spec = pow(max(0, dot(N, H)), _Shininess);
 
                         // -- -- Shadow test -- --
-                        float shadow = ShadowFactorPointLight(i.worldPos, i.normal);
+                        float shadow = ShadowFactorPointLight(worldPos, N);
 
-                        totalLight += shadow * attenuation * (
+                        total += shadow * attenuation * (
                         _Kd.rgb * _PointLightColor[p] * _PointLightIntensity[p] * diff +
-                        _Ks.rgb * _PointLightColor[p] * _PointLightIntensity[p] * spec
-                        );
+                        _Ks.rgb * _PointLightColor[p] * _PointLightIntensity[p] * spec);
                     }
                 }
 
-
-
-                // Spot lights contribution
-                if (_NumSpotLights > 0)
-                {
-                    for (int s = 0; s < _NumSpotLights; s ++)
-                    {
-                        float3 L = _SpotLightPos[s] - i.worldPos;
-                        float dist = length(L);
-                        L = normalize(L);
-
-                        float spotFactor = dot(normalize(- _SpotLightDir[s]), L); // Unity's forward is opposite
-                        float cutoff = _SpotLightAngle[s];
-                        float spotAtten = (spotFactor > cutoff) ? spotFactor : 0;
-
-                        float attenuation = saturate(1.0 - dist / _SpotLightRange[s]);
-
-                        float diff = max(0, dot(N, L));
-                        float3 H = normalize(L + V);
-                        float spec = pow(max(0, dot(N, H)), _Shininess);
-
-                        // -- -- Shadow test for this spotlight -- --
-                        float shadow = ShadowFactorSpotLight(s, i.worldPos, i.normal);
-
-                        totalLight += shadow * spotAtten * attenuation * (
-                        _Kd.rgb * _SpotLightColor[s] * _SpotLightIntensity[s] * diff +
-                        _Ks.rgb * _SpotLightColor[s] * _SpotLightIntensity[s] * spec);
-                    }
-                }
-
-                // Ambient light contributions
-                float3 ambient = _Ka.rgb * _AmbientColor.rgb * _AmbientIntensity;
-                float3 result = ambient + totalLight;
-                return float4(result, 1.0);
+                return total;
             }
+
+
+            float4 frag(v2f i) : SV_Target
+            {
+                float3 totalLight = 0;
+
+                float3 N = normalize(i.normal);
+                float3 V = normalize(_WorldSpaceCameraPos - i.worldPos);
+
+                if (_UseDirShadow > 0.5)
+                totalLight += ComputeDirectionalLight(N, V, i.worldPos);
+
+                if (_UseSpotShadow > 0.5)
+                totalLight += ComputeSpotLight(N, V, i.worldPos);
+
+                if (_UsePointShadow > 0.5)
+                totalLight += ComputePointLight(N, V, i.worldPos);
+
+                float3 ambient = _Ka.rgb * _AmbientColor.rgb * _AmbientIntensity; // ambient light contribution
+
+                return float4(ambient + totalLight, 1.0);
+            }
+
             ENDCG
         }
     }

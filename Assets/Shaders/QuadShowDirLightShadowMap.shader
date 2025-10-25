@@ -1,12 +1,13 @@
-Shader "Custom/ShowSpotLightShadowMap"
+
+Shader "Custom/QuadShowDirLightShadowMap"
 {
     Properties
     {
-        _ShadowMap("Shadow Map", 2D) = "white" {}
+        _ShadowMap ("Shadow Map", 2D) = "white" {}
     }
     SubShader
     {
-        Tags { "Queue" = "Overlay" "RenderType" = "Opaque" }
+        Tags {"RenderType" = "Opaque" }
         Pass
         {
             ZTest Always
@@ -19,12 +20,16 @@ Shader "Custom/ShowSpotLightShadowMap"
             #pragma fragment frag
             #include "UnityCG.cginc"
 
-            struct appdata {
+            sampler2D _ShadowMap;
+
+            struct appdata
+            {
                 float4 vertex : POSITION;
                 float2 uv : TEXCOORD0;
             };
 
-            struct v2f {
+            struct v2f
+            {
                 float4 pos : SV_POSITION;
                 float2 uv : TEXCOORD0;
             };
@@ -37,25 +42,12 @@ Shader "Custom/ShowSpotLightShadowMap"
                 return o;
             }
 
-            // Declare depth texture
-            UNITY_DECLARE_DEPTH_TEXTURE(_ShadowMap);
-
             fixed4 frag(v2f i) : SV_Target
             {
-                // Sample raw depth
-                float raw = SAMPLE_DEPTH_TEXTURE(_ShadowMap, i.uv);
-
-                // Convert to linear [0..1]
-                float d = Linear01Depth(raw);
-
-                // Flip if reversed Z (Unity uses this on DX11 +)
-                #if defined(UNITY_REVERSED_Z)
-                d = 1.0 - d;
-                #endif
-
-                return fixed4(d, d, d, 1);
+                float d = tex2D(_ShadowMap, i.uv).r;
+                d = pow(d, 0.2f);
+                return float4(d, d, d, 1);
             }
-
             ENDCG
         }
     }
