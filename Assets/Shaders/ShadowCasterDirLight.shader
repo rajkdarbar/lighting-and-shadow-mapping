@@ -37,7 +37,7 @@ Shader "Custom/ShadowCasterDirLight"
 
             float frag(v2f i) : SV_Target
             {
-                float d = i.pos.z / i.pos.w; // d is in [0, 1]              
+                float d = i.pos.z / i.pos.w; // d is in [0, 1], thanks to GL.GetGPUProjectionMatrix()              
                 return d;
             }
 

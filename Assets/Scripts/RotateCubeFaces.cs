@@ -3,7 +3,7 @@ using UnityEngine;
 
 public class RotateCubeFaces : MonoBehaviour
 {
-    public float interval = 1.0f; // seconds per face
+    public float interval = 1.0f; // seconds per face    
     private float timer = 0f;
     private int faceIndex = 0;
     private Material mat;

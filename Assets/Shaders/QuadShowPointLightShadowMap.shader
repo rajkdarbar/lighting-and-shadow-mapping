@@ -22,7 +22,7 @@ Shader "Custom/QuadShowPointLightShadowMap"
             #include "UnityCG.cginc"
 
             samplerCUBE _ShadowMap;
-            uniform int _FaceIndex;
+            int _FaceIndex;
 
             struct appdata
             {
@@ -43,26 +43,28 @@ Shader "Custom/QuadShowPointLightShadowMap"
                 o.uv = v.uv;
                 return o;
             }
-            
+
             float3 FaceDir(int face, float2 uv)
             {
-                uv = uv * 2 - 1; // [0..1] → [ - 1..1]
+                uv = uv * 2 - 1; // [0..1] -> [ - 1..1]
                 switch(face)
                 {
                     case 0 : return normalize(float3(1, uv.y, - uv.x)); // + X
                     case 1 : return normalize(float3(- 1, uv.y, uv.x)); // - X
-                    case 2 : return normalize(float3(uv.x, 1, - uv.y)); // + Y
-                    case 3 : return normalize(float3(uv.x, - 1, uv.y)); // - Y
+                    case 2 : return normalize(float3(uv.x, 1, uv.y)); // + Y
+                    case 3 : return normalize(float3(uv.x, - 1, - uv.y)); // - Y
                     case 4 : return normalize(float3(uv.x, uv.y, 1)); // + Z
                     case 5 : return normalize(float3(- uv.x, uv.y, - 1)); // - Z
                 }
+
                 return float3(0, 0, 1);
             }
 
             fixed4 frag(v2f i) : SV_Target
             {
-                float3 dir = FaceDir(_FaceIndex, i.uv); // map quad UV → cubemap face direction
+                float3 dir = FaceDir(_FaceIndex, i.uv); // map quad UV -> cubemap face direction
                 float dist = texCUBE(_ShadowMap, dir).r; // sample stored distance (world units)
+                dist = pow(saturate(dist * 0.8), 2.0);
                 return fixed4(dist, dist, dist, 1);
             }
             ENDCG

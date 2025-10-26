@@ -50,7 +50,7 @@ Shader "Custom/QuadShowSpotLightShadowMap"
                 uv.y = 1.0 - uv.y;
                 #endif
 
-                float d = tex2D(_ShadowMap, uv).r;
+                float d = tex2D(_ShadowMap, uv).r;               
                 return float4(d, d, d, 1);
             }
 

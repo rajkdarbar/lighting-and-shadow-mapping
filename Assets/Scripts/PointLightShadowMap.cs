@@ -2,13 +2,13 @@ using UnityEngine;
 
 public class PointLightShadowMap : MonoBehaviour
 {
-    private Light pointLight; // the point light
-    private Camera shadowCam;
-    private Matrix4x4[] vpMatrices = new Matrix4x4[6];
-
     public RenderTexture shadowCubemap;
-    private static Shader shadowCasterShader;
     public int shadowResolution = 4096;
+    [Range(0.0001f, 0.1f)] public float depthBias = 0.01f;
+
+    private Light pointLight;
+    private Camera shadowCam;
+    private static Shader shadowCasterShader;
 
     void Start()
     {
@@ -22,7 +22,7 @@ public class PointLightShadowMap : MonoBehaviour
         shadowCubemap.autoGenerateMips = false;
         shadowCubemap.Create();
 
-        // Camera
+        // Shadow Camera
         GameObject camObj = new GameObject("ShadowCam_" + gameObject.name);
         camObj.transform.SetParent(transform, false);
         shadowCam = camObj.AddComponent<Camera>();
@@ -30,27 +30,28 @@ public class PointLightShadowMap : MonoBehaviour
         shadowCam.orthographic = false;
 
         shadowCam.clearFlags = CameraClearFlags.SolidColor;
-        shadowCam.backgroundColor = Color.white;
+        shadowCam.backgroundColor = Color.white; // far = 1.0
 
         shadowCam.nearClipPlane = 0.1f;
         shadowCam.farClipPlane = pointLight.range;
         shadowCam.fieldOfView = 90f; // 90° per cube face
         shadowCam.aspect = 1f;
 
-        // Debug quad
+        // Debug quad for shadow map visualization
         var quad = GameObject.Find("QuadPointLight");
         if (quad != null)
         {
-            var m = quad.GetComponent<Renderer>().material;
+            var r = quad.GetComponent<Renderer>();
+            var m = r.material;
             m.SetTexture("_ShadowMap", shadowCubemap);
-            quad.GetComponent<Renderer>().material = m;
+            r.material = m;
         }
 
+        // Push to global
         Shader.SetGlobalFloat("_PointLightShadowMapSize", shadowResolution);
-
     }
 
-    void Update()
+    void LateUpdate()
     {
         RenderShadows();
     }
@@ -70,27 +71,23 @@ public class PointLightShadowMap : MonoBehaviour
             // Projection and view
             Matrix4x4 proj = Matrix4x4.Perspective(90f, 1f, shadowCam.nearClipPlane, shadowCam.farClipPlane);
             Matrix4x4 view = shadowCam.worldToCameraMatrix;
-            vpMatrices[face] = proj * view;
+            Matrix4x4 vp = proj * view;
+            Shader.SetGlobalMatrix("_PointLightViewProjectionMatrix", vp);
 
             // Temporary 2D depth texture
-            RenderTexture tmp = RenderTexture.GetTemporary(
-                shadowResolution, shadowResolution, 0, RenderTextureFormat.RFloat
-            );
-
+            RenderTexture tmp = RenderTexture.GetTemporary(shadowResolution, shadowResolution, 0, RenderTextureFormat.RFloat);
             shadowCam.targetTexture = tmp;
+
             shadowCam.RenderWithShader(shadowCasterShader, "RenderType");
             shadowCam.targetTexture = null;
 
             // Copy into cubemap face
             Graphics.CopyTexture(tmp, 0, 0, shadowCubemap, face, 0);
-
             RenderTexture.ReleaseTemporary(tmp);
         }
 
-        Shader.SetGlobalMatrixArray("_PointLightViewProjectionMatrix", vpMatrices);
         Shader.SetGlobalTexture("_PointLightShadowMap", shadowCubemap);
-        Shader.SetGlobalVector("_PointLightPos0", transform.position);
-        Shader.SetGlobalFloat("_PointLightRange0", pointLight.range);
+        Shader.SetGlobalFloat("_DepthBiasPointLight", depthBias);
     }
 
     Quaternion GetCubemapFaceRotation(int face)
@@ -98,17 +95,17 @@ public class PointLightShadowMap : MonoBehaviour
         switch (face)
         {
             case 0: // +X
-                return Quaternion.LookRotation(Vector3.right, Vector3.down);
+                return Quaternion.LookRotation(Vector3.right, Vector3.up);
             case 1: // -X
-                return Quaternion.LookRotation(Vector3.left, Vector3.down);
+                return Quaternion.LookRotation(Vector3.left, Vector3.up);
             case 2: // +Y
-                return Quaternion.LookRotation(Vector3.up, Vector3.forward);
+                return Quaternion.LookRotation(Vector3.up, Vector3.back);
             case 3: // -Y
-                return Quaternion.LookRotation(Vector3.down, Vector3.back);
+                return Quaternion.LookRotation(Vector3.down, Vector3.forward);
             case 4: // +Z
-                return Quaternion.LookRotation(Vector3.forward, Vector3.down);
+                return Quaternion.LookRotation(Vector3.forward, Vector3.up);
             case 5: // -Z
-                return Quaternion.LookRotation(Vector3.back, Vector3.down);
+                return Quaternion.LookRotation(Vector3.back, Vector3.up);
             default:
                 return Quaternion.identity;
         }
@@ -116,5 +113,4 @@ public class PointLightShadowMap : MonoBehaviour
 
     void OnEnable() => Shader.SetGlobalFloat("_UsePointShadow", 1);
     void OnDisable() => Shader.SetGlobalFloat("_UsePointShadow", 0);
-
 }

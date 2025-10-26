@@ -37,7 +37,8 @@ public class SingleSpotLightShadowMap : MonoBehaviour
         shadowCam.orthographic = false;
 
         shadowCam.clearFlags = CameraClearFlags.SolidColor;
-        shadowCam.backgroundColor = Color.white;
+        shadowCam.backgroundColor = Color.white; // far = 1.0
+
         shadowCam.targetTexture = shadowMap;
         shadowCam.cullingMask = spot.cullingMask;
 
