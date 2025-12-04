@@ -87,6 +87,7 @@ public class SingleSpotLightShadowMap : MonoBehaviour
 
         // Find all renderers using Blinn–Phong shader
         var renderers = FindObjectsOfType<Renderer>();
+
         foreach (var r in renderers)
         {
             var m = r.sharedMaterial;

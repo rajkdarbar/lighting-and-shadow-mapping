@@ -115,7 +115,7 @@ Shader "Custom/BlinnPhong"
 
                 // Outside shadow map
                 if (uv.x<0||uv.x>1||uv.y<0||uv.y>1)
-                return 1.0;
+                return 0.0;
 
                 // Slope - scaled depth bias
                 float texel = 1.0 / _DirLightShadowMapSize;
@@ -172,9 +172,9 @@ Shader "Custom/BlinnPhong"
                 uv.y = 1.0 - uv.y;
                 #endif
 
-                // Outside shadow map → fully lit
+                // Outside shadow map
                 if (uv.x < 0 || uv.x > 1 || uv.y < 0 || uv.y > 1)
-                return 1.0;
+                return 0.0;
 
                 // Current fragment’s depth in light’s view - space
                 float currDepth = length(lightViewPos); // distance from spotlight
@@ -222,7 +222,7 @@ Shader "Custom/BlinnPhong"
                 // Slope - scaled depth bias
                 float texelSize = 1.0 / _PointLightShadowMapSize;
                 float ndl = saturate(dot(normal, - dir));
-                float bias = _DepthBiasPointLight * (1.0 - ndl) + texelSize;
+                float bias = _DepthBiasPointLight * (1.0 - ndl) + texelSize; // adding texelSize instead of multiplying to avoid arc / ring patterns on the floor
                 bias = max(bias, 0.0001);
 
                 // Poisson jitter offsets (16 samples)
@@ -270,7 +270,8 @@ Shader "Custom/BlinnPhong"
 
                 float diff = max(0, dot(N, L));
                 float3 H = normalize(L + V);
-                float spec = pow(max(0, dot(N, H)), _Shininess);
+                float NdotH = max(0, dot(N, H));
+                float spec = pow(NdotH, _Shininess);  
 
                 float shadow = ShadowFactorDirectionalLight(worldPos, N);
 
@@ -303,8 +304,9 @@ Shader "Custom/BlinnPhong"
                 // Lighting
                 float diff = max(0, dot(N, L));
                 float3 H = normalize(L + V);
-                float spec = pow(max(0, dot(N, H)), _Shininess);
-
+                float NdotH = max(0, dot(N, H));
+                float spec = pow(NdotH, _Shininess);  
+                
                 // Shadow calculation
                 float shadow = ShadowFactorSpotLight(worldPos, N);
 
@@ -329,10 +331,11 @@ Shader "Custom/BlinnPhong"
 
                 float diff = max(0, dot(N, L));
                 float3 H = normalize(L + V);
-                float spec = pow(max(0, dot(N, H)), _Shininess);
+                float NdotH = max(0, dot(N, H));
+                float spec = pow(NdotH, _Shininess);                
 
                 float shadow = ShadowFactorPointLight(worldPos, N);
-                //float shadow = 1;
+                // float shadow = 1;
 
                 total += shadow * attenuation * (
                 _Kd.rgb * _PointLightColor * _PointLightIntensity * diff +
