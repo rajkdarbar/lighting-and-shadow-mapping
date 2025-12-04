@@ -36,7 +36,7 @@ It explores how the **rasterization pipeline** renders lighting and shadows in r
 
 ## 🎥 Demo Video
 
-🎬 [Watch the full walkthrough on YouTube](https://your-video-link-here)
+🎬 [Watch the full walkthrough on YouTube](https://youtu.be/_YQvtcxrGvc)
 
 ---
 
