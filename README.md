@@ -7,12 +7,12 @@ It explores how the **rasterization pipeline** renders lighting and shadows in r
 
 ## 🧩 Features
 
-✅ Directional Light Shadow Mapping (orthographic projection)  
-✅ Spotlight Shadow Mapping (perspective projection)  
-✅ Point Light Shadow Mapping (cubemap rendering with perspective projection)  
-✅ Percentage Closer Filtering (PCF) for smoother shadow edges  
-✅ Blinn–Phong Lighting Model with an ambient term  
-✅ Real-time rendering using Unity’s programmable pipeline (C# + HLSL)
+- Directional Light Shadow Mapping (orthographic projection)  
+- Spotlight Shadow Mapping (perspective projection)  
+- Point Light Shadow Mapping (cubemap rendering with perspective projection)  
+- Percentage Closer Filtering (PCF) for smoother shadow edges  
+- Blinn–Phong Lighting Model with an ambient term  
+- Real-time rendering using Unity’s programmable pipeline (C# + HLSL)
 
 ---
 
