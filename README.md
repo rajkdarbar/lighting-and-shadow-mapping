@@ -1,7 +1,5 @@
 # 💡 Lighting and Shadow Mapping in Unity
-
-This project demonstrates how to implement **shadow mapping** from scratch in Unity for **directional light**, **spotlights**, and **point lights**, using **Percentage Closer Filtering (PCF)** to create soft shadows.  
-It explores how the **rasterization pipeline** renders lighting and shadows in real time.
+This project demonstrates how to implement **shadow mapping** from scratch in Unity for **directional light**, **spotlights**, and **point lights**. It uses **Percentage Closer Filtering (PCF)** to produce soft, visually smooth shadows, and leverages the **rasterization pipeline** to render lighting and shadows efficiently in real time.
 
 ---
 
